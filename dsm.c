@@ -20,15 +20,14 @@ int is_master=0;
 int e_sock,r_sock; // execution thread socket descriptor
 char *base_addr=(char*)(1<<30);
 void *response_function( void *ptr );
+char timestamp[25];
 
-char* ret_timestamp(){
+void ret_timestamp(char* buffer){
 time_t timer;
-char buffer[25];
 struct tm* tm_info;
 time(&timer);
 tm_info = localtime(&timer);
 strftime(buffer, 25, "%Y:%m:%d%H:%M:%S", tm_info);
-return buffer;
 }
 void handler(int cause, siginfo_t *si, void *uap) {
   void* fault_addr = si->si_addr;
@@ -42,14 +41,15 @@ void handler(int cause, siginfo_t *si, void *uap) {
       f=fopen("logs/master_exe.log","a+");
     else 
       f=fopen("logs/slave_exe.log","a+");
-  fprintf(f, "SIGSEGV raised pagefault at address %p\n", si->si_addr);
+  ret_timestamp(timestamp);
+  fprintf(f, "%s : SIGSEGV raised pagefault at address %p\n",timestamp, si->si_addr);
   request_pagenum=((int*)base_addr-(int*)si->si_addr)/pagesize;
   fprintf(f, "Request for Page - %d from other process\n",request_pagenum);
   send(e_sock,e_send_data,strlen(e_send_data), 0);   
   e_bytes_recieved=recv(e_sock,e_recv_data,4096,0);
   //e_recv_data[e_bytes_recieved] = '\0';
-  int *x=((int *) e_recv_data)+1;
-  fprintf(f,"%s : \nRecieved data = %d %d" ,ret_timestamp(), *x,e_bytes_recieved);
+ // int *x=((int *) e_recv_data)+1;
+//  fprintf(f,"\n%s : Recieved data = %d %d" ,timestamp, *x,e_bytes_recieved);
   fclose(f);
 // printf("")
   if (mprotect(base_addr+(request_pagenum*pagesize), pagesize,PROT_WRITE)) {
@@ -229,7 +229,8 @@ void *response_function( void *ptr ) {
       f=fopen("logs/master_res.log","a+");
     else 
       f=fopen("logs/slave_res.log","a+");
-    fprintf(f,"\n Request for pagenumber = %d " , request_pagenum);
+    ret_timestamp(timestamp);
+    fprintf(f,"\n %s : Request for pagenumber = %d " ,timestamp, request_pagenum);
     fclose(f);
     fflush(stdout);
     if (mprotect(base_addr+(request_pagenum*pagesize), pagesize, PROT_READ)) {
