@@ -1,0 +1,13 @@
+SIGSEGV raised pagefault at address 0x40000004
+Request for Page - 0 from other process
+
+Recieved data = 0 4096SIGSEGV raised pagefault at address 0x40000004
+Request for Page - 0 from other process
+
+Recieved data = 0 0SIGSEGV raised pagefault at address 0x40000004
+Request for Page - 0 from other process
+ : 
+Recieved data = 0 4096SIGSEGV raised pagefault at address 0x40000004
+Request for Page - 0 from other process
+ : 
+Recieved data = 0 -1
