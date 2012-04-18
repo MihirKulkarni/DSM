@@ -1,0 +1,12 @@
+Distributed Shared Memory Implementation
+
+The assignment is to write your own distributed shared memory
+implementation.  The basic idea is that you create (through software)
+the illusion that two processes on different machines share the same
+address space.  So when a process writes to a memory location in a
+page that resides on a remote machine, your implementation should ask
+your implementation on the remote machine for a copy, the remote
+machine should protect its page, and then the local machine should map
+the page's data into its own address space.  If the remote machine
+were to access to the page, the same protocol should transfer the page
+back.
