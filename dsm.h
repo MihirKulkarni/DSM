@@ -3,6 +3,4 @@
 void initializeDSM(int ismaster, char * masterip, int mport, char *otherip, int oport, int numpagestoalloc);
 void TerminateDSM();
 void * getsharedregion();
-
-
 #endif

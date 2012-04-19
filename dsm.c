@@ -30,39 +30,42 @@ tm_info = localtime(&timer);
 strftime(buffer, 25, "%Y:%m:%d%H:%M:%S", tm_info);
 }
 void handler(int cause, siginfo_t *si, void *uap) {
+//printf("sigfault");
+  pthread_mutex_lock(&global_mutex);
+//printf("locked\n");
+
   void* fault_addr = si->si_addr;
   int e_bytes_recieved;  
   char e_send_data[10]; //actually send page num - int
   int request_pagenum=0;
   sprintf(e_send_data,"%d",request_pagenum);
   char e_recv_data[4096];
-  FILE *f;
+  /*FILE *f;
   if(is_master==1)
-      f=fopen("logs/master_exe.log","a+");
+      f=fopen("master_exe.log","a+");
     else 
-      f=fopen("logs/slave_exe.log","a+");
+      f=fopen("slave_exe.log","a+");*/
   ret_timestamp(timestamp);
-  fprintf(f, "%s : SIGSEGV raised pagefault at address %p\n",timestamp, si->si_addr);
+  //fprintf(f, "%s : SIGSEGV raised pagefault at address %p\n",timestamp, si->si_addr);
   request_pagenum=((int*)base_addr-(int*)si->si_addr)/pagesize;
-  fprintf(f, "Request for Page - %d from other process\n",request_pagenum);
+//  fprintf(f, "Request for Page - %d from other process\n",request_pagenum);
   send(e_sock,e_send_data,strlen(e_send_data), 0);   
   e_bytes_recieved=recv(e_sock,e_recv_data,4096,0);
   //e_recv_data[e_bytes_recieved] = '\0';
  // int *x=((int *) e_recv_data)+1;
 //  fprintf(f,"\n%s : Recieved data = %d %d" ,timestamp, *x,e_bytes_recieved);
-  fclose(f);
+//  fclose(f);
 // printf("")
   if (mprotect(base_addr+(request_pagenum*pagesize), pagesize,PROT_WRITE)) {
     perror("mprotect");
     exit(1);
   }
-  pthread_mutex_lock(&global_mutex);
-//printf("locked\n");
   memcpy(base_addr+(request_pagenum*pagesize),e_recv_data,pagesize);
   pthread_mutex_unlock(&global_mutex);
+//printf("unlocked\n");
+
 }
 
-//printf("unlocked\n");
 
 
 void initializeDSM(int ismaster, char * masterip, int mport, char *otherip, int oport, int numpagestoalloc){
@@ -70,7 +73,7 @@ void initializeDSM(int ismaster, char * masterip, int mport, char *otherip, int 
   char *addr= mmap((void*)(1<<30), numpagestoalloc*4096, PROT_READ|PROT_WRITE,  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   struct sigaction sa;
   pagesize = sysconf(_SC_PAGESIZE);
-  printf("--- Initialising Distributed Shared Memory for %d pages--- at Base Address %d\n",numpagestoalloc,(int*)addr);
+//  printf("--- Initialising Distributed Shared Memory for %d pages--- at Base Address %d\n",numpagestoalloc,(int*)addr);
 
 /* Configuring Signal Handle */
   sa.sa_sigaction = handler;
@@ -87,11 +90,10 @@ void initializeDSM(int ismaster, char * masterip, int mport, char *otherip, int 
     int numpagestoprotect=numpagestoalloc-(numpagestoalloc/2);
     char *own_start_addr=addr;
     int own_numpagestoprotect=(numpagestoalloc/2);
-    printf("\nTaking ownership of %d pages from %p to %p\n",own_numpagestoprotect,own_start_addr,own_start_addr+pagesize*own_numpagestoprotect-1);
+ //   printf("\nTaking ownership of %d pages from %p to %p\n",own_numpagestoprotect,own_start_addr,own_start_addr+pagesize*own_numpagestoprotect-1);
     if (mprotect(start_addr, pagesize*numpagestoprotect, PROT_NONE)) {
-printf("error");
       perror("mprotect");
-   //   exit(1);
+      exit(1);
     }
   }
   if(ismaster==0){
@@ -99,10 +101,10 @@ printf("error");
     int numpagestoprotect=(numpagestoalloc/2);
     char *own_start_addr=addr+pagesize*(numpagestoalloc/2);
     int own_numpagestoprotect=numpagestoalloc-(numpagestoalloc/2);
-    printf("\nTaking ownership of %d pages from %p to %p\n",own_numpagestoprotect,own_start_addr,own_start_addr+pagesize*own_numpagestoprotect-1);
+    //printf("\nTaking ownership of %d pages from %p to %p\n",own_numpagestoprotect,own_start_addr,own_start_addr+pagesize*own_numpagestoprotect-1);
     if (mprotect(start_addr, pagesize*numpagestoprotect, PROT_NONE)) {
       perror("mprotect");
-    //  exit(1);
+      exit(1);
     }
 }
 
@@ -142,7 +144,10 @@ printf("error");
     perror("Socket");
     exit(1);
   }
-
+if (setsockopt(e_sock,SOL_SOCKET,SO_REUSEADDR,&true,sizeof(int)) == -1) {
+    perror("Setsockopt");
+    exit(1);
+  }
 
   e_server_addr.sin_family = AF_INET;     
   e_server_addr.sin_addr = *((struct in_addr *)e_host->h_addr);
@@ -214,7 +219,7 @@ printf("error");
 }
 
 void *response_function( void *ptr ) {
-  FILE *f; 
+//  FILE *f; 
   int r_connected = (int *)ptr;
   int r_bytes_recieved , true = 1;  
   char r_send_data[4096]; 
@@ -222,16 +227,16 @@ void *response_function( void *ptr ) {
   while (1) {
     r_bytes_recieved = recv(r_connected,r_recv_data,10,0);
     pthread_mutex_lock(&global_mutex);
-//printf("locked\n");
+    //printf("locked\n");
     r_recv_data[r_bytes_recieved] = '\0';
     int request_pagenum=atoi(r_recv_data);
-    if(is_master==1)
-      f=fopen("logs/master_res.log","a+");
+    /*if(is_master==1)
+      f=fopen("master_res.log","a+");
     else 
-      f=fopen("logs/slave_res.log","a+");
+      f=fopen("slave_res.log","a+");*/
     ret_timestamp(timestamp);
-    fprintf(f,"\n %s : Request for pagenumber = %d " ,timestamp, request_pagenum);
-    fclose(f);
+    //fprintf(f,"\n %s : Request for pagenumber = %d " ,timestamp, request_pagenum);
+    //fclose(f);
     fflush(stdout);
     if (mprotect(base_addr+(request_pagenum*pagesize), pagesize, PROT_READ)) {
       perror("mprotect");
@@ -243,13 +248,13 @@ void *response_function( void *ptr ) {
       exit(1);
     }
     pthread_mutex_unlock(&global_mutex);
-usleep(500000);
+//usleep(500000);
 //		printf("unlocked\n");
   }
 return 0;
 }
 void* getsharedregion(){
-printf("--- Getting Shared Region --- at Base Address %d\n",1<<30);
+//printf("--- Getting Shared Region --- at Base Address %d\n",1<<30);
 return (void*)(1<<30);
 }
 

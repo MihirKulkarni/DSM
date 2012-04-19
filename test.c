@@ -31,7 +31,7 @@ int main(int arg, char **argv) {
   int testnumber=atoi(argv[4]);
 
   printf("master=%d masterip=%s otherip=%s\n",master, masterip, otherip);
-  initializeDSM(master, masterip, 20000, otherip, 20001, 10000);
+  initializeDSM(master, masterip, 40000, otherip, 40001, 10000);
 
   void *region = getsharedregion();
 

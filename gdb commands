@@ -1,0 +1,7 @@
+gdb ./test
+run cmd line args
+c - continue
+n - nxt line 
+break filename:line num 
+delete break_point num
+s- nxt instruction
