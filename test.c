@@ -35,7 +35,7 @@ int main(int arg, char **argv) {
 
   void *region = getsharedregion();
 
-  switch(testnumber) {
+switch(testnumber) {
   case 0:
     //simple counting test
     if (master) {
@@ -131,7 +131,7 @@ int main(int arg, char **argv) {
 	if (v2<v1) {
 	  printf("ERROR in ordering of reads/writes\n");
 	}
-	if ((v2%100)==0)//print something every once in a while to see that it is running
+	if ((v2%1000)==0)//print something every once in a while to see that it is running
 	  printf("%d %d\n",v1,v2);
 
 	if (v2==10000)
