@@ -14,7 +14,7 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
-pthread_mutex_t global_mutex=PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t *global_mutex;//=PTHREAD_MUTEX_INITIALIZER;
 int pagesize=4096;
 int is_master=0;
 int e_sock,r_sock; // execution thread socket descriptor
@@ -30,8 +30,7 @@ tm_info = localtime(&timer);
 strftime(buffer, 25, "%m/%d/%Y %H:%M:%S", tm_info);
 }
 void handler(int cause, siginfo_t *si, void *uap) {
-//printf("sigfault");
-  pthread_mutex_lock(&global_mutex);
+printf("sigfault\n");
 //printf("locked\n");
 
   char *fault_addr = si->si_addr;
@@ -40,47 +39,60 @@ void handler(int cause, siginfo_t *si, void *uap) {
   int request_pagenum=0;
   sprintf(e_send_data,"%d",request_pagenum);
   char e_recv_data[4096];
-/*  FILE *f;
+  FILE *f;
   if(is_master==1)
       f=fopen("master_exe.log","a+");
     else 
-      f=fopen("slave_exe.log","a+");*/
-  ret_timestamp(timestamp);
-  //fprintf(f, "\n%s : SIGSEGV raised pagefault at address %p %p %d\n",timestamp, si->si_addr,base_addr, (int)(fault_addr-base_addr));
-  request_pagenum=((int)(fault_addr-base_addr))/pagesize;
+      f=fopen("slave_exe.log","a+");
 
+  ret_timestamp(timestamp);
+  fprintf(f, "\n%s : SIGSEGV raised pagefault at address %p %p %d\n",timestamp, si->si_addr,base_addr, (int)(fault_addr-base_addr));
+  request_pagenum=((int)(fault_addr-base_addr))/pagesize;
+  pthread_mutex_lock(&global_mutex[request_pagenum]);
 
 //char y[10];
 sprintf(e_send_data,"%d",request_pagenum);
-
-
 //printf("%d\n",request_pagenum);
- // fprintf(f, "Request for Page - %d from other process\n",request_pagenum);
+  fprintf(f, "Request for Page - %d from other process\n",request_pagenum);
+//  pthread_mutex_unlock(&global_mutex[request_pagenum]);
   send(e_sock,e_send_data,strlen(e_send_data), 0);   
+//printf("wait on recv msg after requesting %d\n",request_pagenum);
   e_bytes_recieved=recv(e_sock,e_recv_data,4096,0);
+ // pthread_mutex_lock(&global_mutex);
+//printf("recved\n");
  // e_recv_data[e_bytes_recieved] = '\0';
   int *x;
-if(request_pagenum==7)
-x=(int *)(e_recv_data+3328);
-else
-x=(int *)(e_recv_data);
+int * ptr;
 
-//  fprintf(f,"\n%s : Recieved data = %d %d" ,timestamp,*x,e_bytes_recieved);
-//  fclose(f);
+if(request_pagenum==7){
+ptr=(int *)base_addr+8000;
+x=(int *)(e_recv_data+3328);
+}
+else
+{
+x=(int *)(e_recv_data);
+ptr=(int *)base_addr;
+}
+  fprintf(f,"\n%s : Recieved data = %d %d %p" ,timestamp,*x,e_bytes_recieved,base_addr+(request_pagenum*pagesize));
+
   if (mprotect(base_addr+(request_pagenum*pagesize), pagesize,PROT_WRITE)) {
     perror("mprotect");
     exit(1);
   }
+fprintf(f,"\n Unprotected memory%p %p %d %d",ptr,base_addr+(request_pagenum*pagesize),pagesize,*ptr);
   memcpy(base_addr+(request_pagenum*pagesize),e_recv_data,pagesize);
-  pthread_mutex_unlock(&global_mutex);
+//fprintf(f,"\n Accessing from memory: %d",*ptr);
+  pthread_mutex_unlock(&global_mutex[request_pagenum]);
 //printf("unlocked\n");
-
+  fclose(f);
 }
 
 
 
 void initializeDSM(int ismaster, char * masterip, int mport, char *otherip, int oport, int numpagestoalloc){
   is_master=ismaster;//remove finally
+global_mutex=malloc(sizeof(pthread_mutex_t)*numpagestoalloc);
+
   char *addr= mmap((void*)(1<<30), numpagestoalloc*4096, PROT_READ|PROT_WRITE,  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   struct sigaction sa;
   pagesize = sysconf(_SC_PAGESIZE);
@@ -229,27 +241,33 @@ if (setsockopt(e_sock,SOL_SOCKET,SO_REUSEADDR,&true,sizeof(int)) == -1) {
 }
 
 void *response_function( void *ptr ) {
-  //FILE *f; 
+  FILE *f; 
   int r_connected = (int *)ptr;
   int r_bytes_recieved , true = 1;  
   char r_send_data[4096]; 
   char r_recv_data[10]; //actually recv page number - int 
   while (1) {
+usleep(500);
+
     r_bytes_recieved = recv(r_connected,r_recv_data,10,0);
-    pthread_mutex_lock(&global_mutex);
-//    printf("locked\n");
+//printf("locked\n");
     r_recv_data[r_bytes_recieved] = '\0';
 //printf("\nresponse:%s",r_recv_data);
     int request_pagenum=atoi(r_recv_data);
- /*   if(is_master==1)
+    pthread_mutex_lock(&global_mutex[request_pagenum]);
+
+    if(is_master==1)
       f=fopen("master_res.log","a+");
     else 
-      f=fopen("slave_res.log","a+");*/
+      f=fopen("slave_res.log","a+");
     ret_timestamp(timestamp);
-//    fprintf(f,"\n %s : Request for pagenumber = %d " ,timestamp, request_pagenum);
-
+    fprintf(f,"\n %s : Request for pagenumber = %d " ,timestamp, request_pagenum);
     fflush(stdout);
+//printf("\nwait for lock to send %d",request_pagenum);
+
+//printf("\nlock acquired");
     if (mprotect(base_addr+(request_pagenum*pagesize), pagesize, PROT_READ)) {
+fprintf(f,"i cant protect");
       perror("mprotect");
       exit(1);
     }
@@ -260,14 +278,17 @@ x=(int*)(base_addr+(request_pagenum*pagesize)+3328);
 else
 x=(int*)(base_addr+(request_pagenum*pagesize));
 
-  //  fprintf(f,"\n : Sending from  = %p data: %d " ,base_addr+(request_pagenum*pagesize),*x);
+    fprintf(f,"\n : Sending from  = %p data: %d " ,base_addr+(request_pagenum*pagesize),*x);
 
     if (mprotect(base_addr+(request_pagenum*pagesize), pagesize, PROT_NONE)) {
+fprintf(f,"i cant protect");
       perror("mprotect");
       exit(1);
     }
- //   fclose(f);
-    pthread_mutex_unlock(&global_mutex);
+
+    fclose(f);
+//printf("\n page sent and lock unlocked");
+    pthread_mutex_unlock(&global_mutex[request_pagenum]);
 //usleep(500000);
 //		printf("unlocked\n");
   }

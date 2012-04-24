@@ -31,7 +31,7 @@ int main(int arg, char **argv) {
   int testnumber=atoi(argv[4]);
 
   printf("master=%d masterip=%s otherip=%s\n",master, masterip, otherip);
-  initializeDSM(master, masterip, 40000, otherip, 40001, 10000);
+  initializeDSM(master, masterip, 50000, otherip, 50001, 10000);
 
   void *region = getsharedregion();
 
@@ -110,6 +110,7 @@ switch(testnumber) {
     }
     break;
   case 3:
+
     //ordering test
     if (master) {
       volatile int * ptr=(int *)region;
@@ -128,12 +129,12 @@ switch(testnumber) {
       while(1) {
 	int v1=*ptr2;
 	int v2=*ptr;
+
 	if (v2<v1) {
 	  printf("ERROR in ordering of reads/writes\n");
 	}
-	if ((v2%1000)==0)//print something every once in a while to see that it is running
+	if ((v2%100)==0)//print something every once in a while to see that it is running
 	  printf("%d %d\n",v1,v2);
-
 	if (v2==10000)
 	  break;
       }
