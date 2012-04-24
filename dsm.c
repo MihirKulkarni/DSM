@@ -14,7 +14,7 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <stdlib.h>
-pthread_mutex_t *global_mutex;//=PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t *global_mutex;
 int pagesize=4096;
 int is_master=0;
 int e_sock,r_sock; // execution thread socket descriptor
@@ -30,7 +30,7 @@ tm_info = localtime(&timer);
 strftime(buffer, 25, "%m/%d/%Y %H:%M:%S", tm_info);
 }
 void handler(int cause, siginfo_t *si, void *uap) {
-printf("sigfault\n");
+
 //printf("locked\n");
 
   char *fault_addr = si->si_addr;
@@ -53,7 +53,7 @@ printf("sigfault\n");
 //char y[10];
 sprintf(e_send_data,"%d",request_pagenum);
 //printf("%d\n",request_pagenum);
-  fprintf(f, "Request for Page - %d from other process\n",request_pagenum);
+  //fprintf(f, "Request for Page - %d from other process\n",request_pagenum);
 //  pthread_mutex_unlock(&global_mutex[request_pagenum]);
   send(e_sock,e_send_data,strlen(e_send_data), 0);   
 //printf("wait on recv msg after requesting %d\n",request_pagenum);
@@ -64,7 +64,7 @@ sprintf(e_send_data,"%d",request_pagenum);
   int *x;
 int * ptr;
 
-if(request_pagenum==7){
+/*if(request_pagenum==7){
 ptr=(int *)base_addr+8000;
 x=(int *)(e_recv_data+3328);
 }
@@ -72,14 +72,14 @@ else
 {
 x=(int *)(e_recv_data);
 ptr=(int *)base_addr;
-}
-  fprintf(f,"\n%s : Recieved data = %d %d %p" ,timestamp,*x,e_bytes_recieved,base_addr+(request_pagenum*pagesize));
+}*/
+ // fprintf(f,"\n%s : Recieved data = %d %d %p" ,timestamp,*x,e_bytes_recieved,base_addr+(request_pagenum*pagesize));
 
   if (mprotect(base_addr+(request_pagenum*pagesize), pagesize,PROT_WRITE)) {
     perror("mprotect");
     exit(1);
   }
-fprintf(f,"\n Unprotected memory%p %p %d %d",ptr,base_addr+(request_pagenum*pagesize),pagesize,*ptr);
+//fprintf(f,"\n Unprotected memory%p %p %d %d",ptr,base_addr+(request_pagenum*pagesize),pagesize,*ptr);
   memcpy(base_addr+(request_pagenum*pagesize),e_recv_data,pagesize);
 //fprintf(f,"\n Accessing from memory: %d",*ptr);
   pthread_mutex_unlock(&global_mutex[request_pagenum]);
@@ -247,7 +247,7 @@ void *response_function( void *ptr ) {
   char r_send_data[4096]; 
   char r_recv_data[10]; //actually recv page number - int 
   while (1) {
-usleep(500);
+//usleep(500);
 
     r_bytes_recieved = recv(r_connected,r_recv_data,10,0);
 //printf("locked\n");
@@ -261,7 +261,7 @@ usleep(500);
     else 
       f=fopen("slave_res.log","a+");
     ret_timestamp(timestamp);
-    fprintf(f,"\n %s : Request for pagenumber = %d " ,timestamp, request_pagenum);
+  //  fprintf(f,"\n %s : Request for pagenumber = %d " ,timestamp, request_pagenum);
     fflush(stdout);
 //printf("\nwait for lock to send %d",request_pagenum);
 
@@ -273,12 +273,12 @@ fprintf(f,"i cant protect");
     }
     send(r_connected, base_addr+(request_pagenum*pagesize),pagesize, 0); 
 int *x;
-if(request_pagenum==7)
+/*if(request_pagenum==7)
 x=(int*)(base_addr+(request_pagenum*pagesize)+3328);
 else
 x=(int*)(base_addr+(request_pagenum*pagesize));
-
-    fprintf(f,"\n : Sending from  = %p data: %d " ,base_addr+(request_pagenum*pagesize),*x);
+*/
+//    fprintf(f,"\n : Sending from  = %p data: %d " ,base_addr+(request_pagenum*pagesize),*x);
 
     if (mprotect(base_addr+(request_pagenum*pagesize), pagesize, PROT_NONE)) {
 fprintf(f,"i cant protect");
