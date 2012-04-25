@@ -1,3 +1,49 @@
+/*	Project: Distributed Shared Memory
+ *	EECS 218 - Distributed Computer Systems
+ *	
+ *	Member-1
+ *	Name : Karthik Ragunath Balasundaram
+ *	Student ID : 78806170
+ *	UCI Student ID : kbalasun
+ *
+ *	Member-2
+ *	Name : Mihir Kulkarni
+ *	Student ID : 89481531
+ *	UCI Student ID : mihirk
+ *
+ *	Please refer to README for the steps to run this program.
+ *
+ *	NOTE: Please start the "master" before staring execution of "slave"
+ *				for proper results.
+ *
+ *	1. Initially, we divide the shared memory between the master and the
+ *		slave so that each has ownership of half the memory.
+ *
+ *	2. Whenever a process requests a page, we transfer the ownership of
+ *		the page to the requesting process. So when the current process
+ *		again needs that same page, it has to request it from the other process.
+ *
+ *	3. Ownership of pages is achieved using the protection mode of "mprotect".
+ *		If a page is "mprotect" in PROT_NONE mode it means that the process
+ *		doesn't have ownership of the particular page. On the other hand if
+ *		"mprotect" is in PROT_WRITE mode, it means that the process owns the page.
+ *
+ *	4. We have also made use of page level mutex locking to avoid various
+ *		problems in a Distributed Shared Memory. It also helps us to avoid
+ *		deadlocks. (pthread_mutex)
+ *
+ *	5. We establish the socket connections in "initializeDSM" and use pthread
+ *		only to send and receive pages.
+ *
+ *	6. A response thread in both master and slave keeps listening on a port
+ *		for page requests. The response thread itself is responsible for 
+ *		sending the page requested by the other process. Again it makes use of
+ *		per page locks to avoid data inconsistency.
+ *
+ */
+
+
+
 #include <time.h>
 #include <pthread.h>
 #include <netdb.h>
@@ -18,43 +64,44 @@
 pthread_mutex_t *global_mutex;
 int pagesize = 4096;
 int is_master = 0;
-int e_sock,r_sock; // execution thread socket descriptor
-char *base_addr = (char*)(1<<30);
+int e_sock,r_sock;															// Execution thread socket descriptor for master and slave respectively
+char *base_addr = (char*)(1<<30);								// 1GB
 void *response_function ( void *ptr );
+
+/*	The "handler" function specifies the action to be taken
+ *	in receipt of a specific SIGNAL.
+ *	This is called when we have a PAGE FAULT
+ */
 
 void handler (int cause, siginfo_t *si, void *uap) {
 
   char *fault_addr = si->si_addr;
   int e_bytes_recieved;  
-  char e_send_data[10]; //actually send page num - int
-  int request_pagenum=0;
-  sprintf(e_send_data,"%d",request_pagenum);
-  char e_recv_data[4096];
+  char e_send_data[10];													// Actually send page num - int
+  int request_pagenum = 0;
+	sprintf(e_send_data,"%d",request_pagenum);		// e_send_data has the pagenum which is requested
+  char e_recv_data[4096];												// Buffer to store incoming page
 
   request_pagenum = ((int)(fault_addr-base_addr)) / pagesize;
-  pthread_mutex_lock(&global_mutex[request_pagenum]);
+  pthread_mutex_lock(&global_mutex[request_pagenum]);			// Lock the page using per page mutex locking
 
 	sprintf (e_send_data,"%d",request_pagenum);
   send (e_sock,e_send_data,strlen(e_send_data), 0);
-  e_bytes_recieved=recv(e_sock,e_recv_data,4096,0);
-  int *x;
-	int * ptr;
+  e_bytes_recieved=recv(e_sock,e_recv_data,4096,0);				// Receive page in buffer
 
-  if (mprotect(base_addr+(request_pagenum*pagesize), pagesize,PROT_WRITE)) {
+  if (mprotect(base_addr+(request_pagenum*pagesize), pagesize, PROT_WRITE)) {		// Set protection of received page to PROT_WRITE
     perror("mprotect");
     exit(1);
   }
 
-  memcpy(base_addr+(request_pagenum*pagesize),e_recv_data,pagesize);
-  pthread_mutex_unlock(&global_mutex[request_pagenum]);
+  memcpy(base_addr+(request_pagenum*pagesize),e_recv_data,pagesize);		// Copy the page to memory
+  pthread_mutex_unlock(&global_mutex[request_pagenum]);		// Unlock the page mutex
 
 }
 
-
-
 void initializeDSM (int ismaster, char * masterip, int mport, char *otherip, int oport, int numpagestoalloc) {
-	is_master=ismaster;//remove finally
-	global_mutex=malloc(sizeof(pthread_mutex_t)*numpagestoalloc);
+	is_master=ismaster;
+	global_mutex = malloc(sizeof(pthread_mutex_t)*numpagestoalloc);			// "malloc" mutex; 1 for each page
 
   char *addr= mmap((void*)(1<<30), numpagestoalloc*4096, PROT_READ|PROT_WRITE,  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   struct sigaction sa;

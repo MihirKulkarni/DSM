@@ -1,0 +1,102 @@
+Initial Due Date: 11:59pm on April 19th. 
+
+Final Due Date: 11:59pm on April 26th.
+
+Grading:
+
+The assignment grade will be calculated as follows:
+20% - Initial Version 
+
+You will receive full credit for the initial due date if your
+implementation passes at least one test case and no credit otherwise.
+
+50% - Test Cases for Final Version
+
+Percentage of test cases passed (this will include the test cases the
+were sent to you with the assignment and may include additional test
+cases).
+
+30% - Code inspection of Final Version
+
+
+Logistics:
+
+You can work in groups of 1-2 students.  You should not share any code
+between groups, but you can discuss the high level ideas and the
+interfaces to various system calls between groups.  You should not
+copy code from elsewhere.  The one exception is that you can look at
+code to see how to use socket I/O.
+
+If you have questions, email eecs218-s12@classes.uci.edu.  It will go
+to everyone.  You are encouraged to answer questions of other
+students, but do not paste your code into any emails.
+
+Copying Policy:
+
+Your assignment must include the file statement.txt with the following
+text: "I, your name, hereby certify that the files I submitted
+represent my own work, that I did not copy any code from any other
+person or source other than the socket I/O code, and that I did not
+share my code with any other students."
+
+Servers:
+
+You should use the EECS department linux server ladera.eecs.uci.edu.
+
+Description:
+    
+The assignment is to write your own distributed shared memory
+implementation.  The basic idea is that you create (through software)
+the illusion that two processes on different machines share the same
+address space.  So when a process writes to a memory location in a
+page that resides on a remote machine, your implementation should ask
+your implementation on the remote machine for a copy, the remote
+machine should protect its page, and then the local machine should map
+the page's data into its own address space.  If the remote machine
+were to access to the page, the same protocol should transfer the page
+back.
+    
+Your implementation should implement the process consistency memory
+model (x86 memory consistency model --- writes from one processor need
+to be seen in the same order by the other machine).  If you want to be
+more ambitious, you can consider other memory models instead.  But get
+approval first and clearly state (1) the name of the memory model and
+(2) the properties it guarantees.
+
+Client: The web page includes a test client in test.c
+and the interface that your DSM must provide in dsm.h.  You need to
+pass all test cases.
+
+ To run a test case type
+./test master masterip slaveip testcase_number   on the master machine and
+./test slave masterip slaveip testcase_number   on the slave machine where
+masterip == ip address of master machine
+slaveip == ip address of slave machine
+testcase_number is between 0 and 5.
+
+
+As you may only have access to a single linux machine, you can
+simulate multiple machines by simply running two copies of your
+implementation.
+
+Hints: Some information that you might want to search for to help you
+implement this (you can look up some information by using the command
+man for manual page):
+
+1) socket, read, write, recv, send, bind, accept, listen --socket
+communication primitives.  Keep in mind linux only allows normal users
+to use the higher port numbers and only one process can listen for new
+connections on a port at a given time.  Note that read is allowed to
+return a smaller number of bytes than you specify.  Place it in a loop
+to make sure you get all of the bytes you expected.
+
+2) mprotect
+
+3) mmap
+
+4) sigaction (note that the si_addr field of siginfo_t structure let's
+you know the address that the program tried to read.  Linux's signal
+handle doesn't provide a way to differentiate whether the fault was
+caused by a read or a write.)
+
+Turning it in: To turn the assignment in, log into malibu.eecs.uci.edu.  Create the directory hw1 directly under your home directory and move your code into that assignment.  Type /ecelib/bin/turnin218 and hit enter to turn it in.  If you have a permission problem, use chmod to correct it (see man -s 1 chmod for details).  Switch the permissions back after turning in your code.
