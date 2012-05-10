@@ -48,7 +48,7 @@
  *		per page locks to avoid data inconsistency.
  *
  * 	P.S: In order to attain a page-aligned contiguous memory fitting numpagestoalloc*Pagesize
- *		bytes of memory. We have hard-coded the starting address for mmap to be 1GB, 
+ *		bytes of memory, we have hard-coded the starting address for mmap to be 1GB, 
  *		which marks the end of kernel space and beginning of the user space.
  *
  */
@@ -80,7 +80,9 @@ void *response_function ( void *ptr );
  */
 void handler (int cause, siginfo_t *si, void *uap) {
   char *fault_addr = si->si_addr;
-  int e_bytes_recieved;  
+  int e_bytes_recieved=0;  
+  int e_bytes_start=0;
+  int e_bytes_remaining=4096;
   char e_send_data[10];				// To request the page number where the signal fault was generated.
   int request_pagenum = 0;
   sprintf(e_send_data,"%d",request_pagenum);	// e_send_data has the pagenum which is requested
@@ -89,22 +91,26 @@ void handler (int cause, siginfo_t *si, void *uap) {
   pthread_mutex_lock(&global_mutex[request_pagenum]);				// Lock the page using per page mutex locking
   sprintf (e_send_data,"%d",request_pagenum);
   send (e_sock,e_send_data,strlen(e_send_data), 0);
-  e_bytes_recieved=recv(e_sock,e_recv_data,4096,0);				// Receive page in buffer
+  while(e_bytes_remaining>0){
+    e_bytes_recieved=recv(e_sock,&e_recv_data[e_bytes_start],e_bytes_remaining,0);
+    e_bytes_remaining-=e_bytes_recieved;
+    e_bytes_start+=e_bytes_recieved;
+  }										// Receive page in buffer
   if (mprotect(base_addr+(request_pagenum*pagesize), pagesize, PROT_WRITE)) {	// Set protection of received page to PROT_WRITE
     perror("mprotect");
     exit(1);
   }
   memcpy(base_addr+(request_pagenum*pagesize),e_recv_data,pagesize);		// Copy the page to memory
-  pthread_mutex_unlock(&global_mutex[request_pagenum]);		// Unlock the page mutex
+  pthread_mutex_unlock(&global_mutex[request_pagenum]);				// Unlock the page mutex
 
 }
 
 void initializeDSM (int ismaster, char * masterip, int mport, char *otherip, int oport, int numpagestoalloc) {
-  global_mutex = malloc(sizeof(pthread_mutex_t)*numpagestoalloc);			// "malloc" mutex; 1 for each page
+  global_mutex = malloc(sizeof(pthread_mutex_t)*numpagestoalloc);		// "malloc" mutex; 1 for each page
 
   char *addr= mmap((void*)(1<<30), numpagestoalloc*4096, PROT_READ|PROT_WRITE,  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   struct sigaction sa;
-  pagesize = sysconf(_SC_PAGESIZE);		//determine the pagesize configures by OS. Generally it is 4096 bytes.
+  pagesize = sysconf(_SC_PAGESIZE);						//determine the pagesize configures by OS. Generally it is 4096 bytes.
 
 /* Configuring Signal Handle */
   sa.sa_sigaction = handler;
@@ -115,7 +121,7 @@ void initializeDSM (int ismaster, char * masterip, int mport, char *otherip, int
     exit(1);
   }
   signal(SIGPIPE,SIG_IGN);		//We ignore SIGFAULTS generated due to a broken pipe. 
-					//This generally happens when we have terminated the socket at on of the ends.
+					//This generally happens when we have terminated the socket at one of the ends.
 
 /*  Taking ownership of memory */
   if (ismaster==1) {
@@ -128,7 +134,6 @@ void initializeDSM (int ismaster, char * masterip, int mport, char *otherip, int
       exit(1);
     }
   }
-
   if (ismaster==0) {
     char *start_addr = addr;
     int numpagestoprotect = (numpagestoalloc/2);
@@ -141,23 +146,25 @@ void initializeDSM (int ismaster, char * masterip, int mport, char *otherip, int
   }
 
 /* Configuring TCP sockets */
-
   pthread_t thread1;
   int  iret1, iret2;
   int r_connected, r_bytes_recieved, true=1;
-  int e_bytes_recieved;  //e_sock declared globally
+  int e_bytes_recieved;  		//e_sock declared globally
   struct sockaddr_in r_server_addr, r_client_addr;    
   int r_sin_size;
   struct hostent *e_host;
-  struct sockaddr_in e_server_addr;  
-
+  struct sockaddr_in e_server_addr;
+  char *host_ip = malloc(100);
+  char *guest_ip = malloc(100);
   if (ismaster == 1) {
-    e_host = gethostbyname(otherip);
+    strcpy(host_ip, otherip);
+    strcpy(guest_ip, masterip);
     r_server_addr.sin_port = htons(mport);//20000
     e_server_addr.sin_port = htons(oport); //20001
   }
   else if (ismaster == 0) {
-    e_host = gethostbyname(masterip);
+    strcpy(host_ip, masterip);
+    strcpy(guest_ip, otherip);
     r_server_addr.sin_port = htons(oport);//20001
     e_server_addr.sin_port = htons(mport); //20000
   }
@@ -178,16 +185,20 @@ void initializeDSM (int ismaster, char * masterip, int mport, char *otherip, int
     perror("Setsockopt");
     exit(1);
   }
-
   r_server_addr.sin_family = AF_INET;
-  r_server_addr.sin_addr.s_addr = INADDR_ANY; 
+  if(inet_pton(AF_INET, guest_ip, &r_server_addr.sin_addr) <= 0){
+    perror("inet_pton");
+    exit(1);
+  }
   bzero(&(r_server_addr.sin_zero),8);
   e_server_addr.sin_family = AF_INET;     
-  e_server_addr.sin_addr = *((struct in_addr *)e_host->h_addr);
+  if(inet_pton(AF_INET, host_ip, &e_server_addr.sin_addr) <= 0){
+    perror("inet_pton");
+    exit(1);
+  }
   bzero(&(e_server_addr.sin_zero),8); 
 
 /* Establishing connections */
-
   if(ismaster == 1){
 //Connect from masters's response thread and slaves's execution thread
     if (bind(r_sock, (struct sockaddr *)&r_server_addr, sizeof(struct sockaddr)) == -1) {
@@ -208,7 +219,6 @@ void initializeDSM (int ismaster, char * masterip, int mport, char *otherip, int
       exit(1);
     }
   }
-
   else if (ismaster==0) {
 //Connect from slave's execution thread and master's response thread
     if (connect(e_sock, (struct sockaddr *)&e_server_addr,sizeof(struct sockaddr)) == -1) {
@@ -228,7 +238,6 @@ void initializeDSM (int ismaster, char * masterip, int mport, char *otherip, int
     r_sin_size = sizeof(struct sockaddr_in);
     r_connected = accept(r_sock, (struct sockaddr *)&r_client_addr,&r_sin_size);
   }
-
   /* Create a thread which will make the response function to run independently*/
   iret1 = pthread_create( &thread1, NULL, response_function, (void*) r_connected);
 }
@@ -258,11 +267,12 @@ void *response_function (void *ptr) {
   return 0;
 }
 void* getsharedregion() {
-	return (void*)(1<<30); //return the base address where the shared region begins
+  return (void*)(1<<30); //return the base address where the shared region begins
 }
 
 /* Can be used to safely close all communication before exiting the program */
 void TerminateDSM() {
-	close(e_sock);
-	close(r_sock);
+  close(e_sock);
+  close(r_sock);
 }
+
